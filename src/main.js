@@ -172,16 +172,10 @@ BLOCK_TYPES.forEach((t, i) => {
   const el = document.createElement('div');
   el.className = 'slot';
   el.dataset.i = i;
-  // draw a simple icon: gradient cube face
-  const c = document.createElement('canvas');
-  c.width = c.height = 40;
-  const g = c.getContext('2d');
-  g.fillStyle = t.top; g.fillRect(4, 4, 32, 32);
-  g.fillStyle = t.side; g.fillRect(4, 24, 32, 12);
-  g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(4, 4, 32, 8);
-  g.strokeStyle = 'rgba(0,0,0,0.25)'; g.strokeRect(4, 4, 32, 32);
   const img = document.createElement('img');
-  img.src = c.toDataURL();
+  img.src = `art/icons/${t.id}.png`;
+  img.alt = t.name;
+  img.draggable = false;
   el.appendChild(img);
   const key = document.createElement('span');
   key.className = 'key';
