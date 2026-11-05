@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cube Hollow — a cozy building game</title>
+<link rel="icon" href="assets/icons/favicon.png">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="title-screen">
+  <div class="title-card">
+    <h1>CUBE&nbsp;HOLLOW</h1>
+    <p>a cozy little valley, waiting for you</p>
+    <button id="start-btn">begin</button>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="hotbar"></div>
+  <div id="hint"></div>
+  <div id="clock"></div>
+</div>
+
+<!-- Touch controls -->
+<div id="touch-ui" class="hidden">
+  <div id="joystick">
+    <div id="joystick-knob"></div>
+  </div>
+  <div id="action-buttons">
+    <button id="btn-place" class="abtn">place</button>
+    <button id="btn-remove" class="abtn">mine</button>
+    <button id="btn-cycle" class="abtn">item</button>
+  </div>
+</div>
+
+<script>
+window.__errs = [];
+window.addEventListener('error', e => {
+  window.__errs.push(String(e.message) + ' @ ' + e.lineno);
+  window.__lastStack = e.error && e.error.stack ? String(e.error.stack) : '';
+  var d = document.getElementById('errbar');
+  if (!d) { d = document.createElement('div'); d.id = 'errbar'; d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c33;color:#fff;font:12px monospace;z-index:9999;padding:4px;white-space:pre-wrap;'; document.body.appendChild(d); }
+  d.textContent = (window.__lastStack || '') + '\n' + window.__errs.join('\n');
+});
+</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
