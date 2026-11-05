@@ -200,6 +200,43 @@ function addMushroom(list, p, x, z, y) {
   pushGeo(list, G.ico, mat(x, y + 0.3 * s, z, 0, 0.2 * s, 0.13 * s, 0.2 * s), C.mushroom, 0, 0);
 }
 
+// ---------------- waterfalls ----------------
+// translucent falling-water ribbons on river banks, with foam at the base
+const wfTextures = [];
+function makeWaterfallMaterial() {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 64, 0);
+  grad.addColorStop(0, 'rgba(190,220,238,0.55)');
+  grad.addColorStop(0.5, 'rgba(235,248,255,0.92)');
+  grad.addColorStop(1, 'rgba(190,220,238,0.55)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 256);
+  for (let i = 0; i < 26; i++) {
+    const x = Math.random() * 64;
+    const w = 1 + Math.random() * 2.5;
+    const y = Math.random() * 256;
+    const len = 20 + Math.random() * 90;
+    g.fillStyle = `rgba(255,255,255,${0.25 + Math.random() * 0.5})`;
+    g.fillRect(x, y, w, len);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  wfTextures.push(tex);
+  return new THREE.MeshLambertMaterial({
+    map: tex, transparent: true, opacity: 0.92, side: THREE.DoubleSide,
+    emissive: new THREE.Color('#9db8cc'), emissiveIntensity: 0.18,
+  });
+}
+const waterfallMat = makeWaterfallMaterial();
+const waterfallFoamMat = new THREE.MeshLambertMaterial({
+  color: '#f2f8fa', transparent: true, opacity: 0.7,
+});
+export function tickWaterfalls(dt) {
+  for (const t of wfTextures) t.offset.y -= dt * 0.85;
+}
+
 export class Chunk {
   constructor(scene, world, cx, cz, distFromCenter) {
     this.cx = cx; this.cz = cz;
@@ -207,7 +244,67 @@ export class Chunk {
     scene.add(this.group);
     this.buildTerrain(world);
     this.buildProps(world);
+    this.buildWaterfalls(world);
     if (distFromCenter <= 3) this.buildGrass(world);
+  }
+
+  buildWaterfalls(world) {
+    const x0 = this.cx * CHUNK_SIZE, z0 = this.cz * CHUNK_SIZE;
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const placed = new Set();
+    for (let i = 0; i <= CHUNK_SIZE; i++) {
+      for (let j = 0; j <= CHUNK_SIZE; j++) {
+        const x = x0 + i, z = z0 + j;
+        const h = world.heightMesh(x, z);
+        if (h < WATER_LEVEL + 1.6) continue;          // bank must rise above the water
+        if (h > WATER_LEVEL + 2.8) continue;           // gentle cascades only, no walls
+        if (world.riverMask(x, z) > 0.5) continue;     // we are on the bank, not in the river
+        for (const [dx, dz] of dirs) {
+          const nx = x + dx, nz = z + dz;
+          if (world.riverMask(nx, nz) < 0.9) continue; // neighbor must be deep river
+          const kk = `${nx},${nz}`;
+          if (placed.has(kk)) continue;
+          placed.add(kk);
+          // drape a water strip over the real terrain profile, bank crest -> river
+          const steps = 14;
+          const w = 0.7 + hash2(Math.round(x * 3), Math.round(z * 3)) * 0.5;
+          const pos = [], uv = [], index = [];
+          let vDist = 0, prevY = null, foamAt = null;
+          for (let s = 0; s <= steps; s++) {
+            const t = s / steps;                       // 0 = bank centre, 1 = river centre
+            const sx = x + dx * t, sz = z + dz * t;
+            let y = world.heightMesh(sx, sz) + 0.06;
+            if (y < WATER_LEVEL + 0.1) y = WATER_LEVEL + 0.1;  // meet the water surface
+            if (prevY !== null) vDist += Math.hypot(1 / steps, y - prevY);
+            prevY = y;
+            if (foamAt === null && y <= WATER_LEVEL + 0.15) foamAt = [sx, sz];
+            const ox = -dz * w / 2, oz = dx * w / 2;
+            pos.push(sx + ox, y, sz + oz, sx - ox, y, sz - oz);
+            uv.push(0, vDist / 2, 1, vDist / 2);
+            if (s > 0) {
+              const a = (s - 1) * 2, b = s * 2;
+              index.push(a, b, a + 1, a + 1, b, b + 1);
+            }
+          }
+          if (vDist < 1.2) continue;                    // not enough fall to read as a cascade
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+          geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+          geo.setIndex(index);
+          geo.computeVertexNormals();
+          const mesh = new THREE.Mesh(geo, waterfallMat);
+          this.group.add(mesh);
+          // foam disc where the water lands
+          const fx = foamAt ? foamAt[0] : x + dx * 0.8;
+          const fz = foamAt ? foamAt[1] : z + dz * 0.8;
+          const foam = new THREE.Mesh(new THREE.CircleGeometry(w * 0.9, 14), waterfallFoamMat);
+          foam.rotation.x = -Math.PI / 2;
+          foam.position.set(fx, WATER_LEVEL + 0.08, fz);
+          this.group.add(foam);
+          break;
+        }
+      }
+    }
   }
 
   buildTerrain(world) {

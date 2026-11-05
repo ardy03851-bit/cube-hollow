@@ -44,7 +44,7 @@ export class WorldGen {
 
   riverMask(x, z) {
     // 1 inside river, fading out at the banks
-    return 1 - smoothstep(0.028, 0.09, this.riverField(x, z));
+    return 1 - smoothstep(0.075, 0.22, this.riverField(x, z));
   }
 
   pathMask(x, z) {

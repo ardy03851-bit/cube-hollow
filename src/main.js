@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 import * as THREE from 'three';
 import { WorldGen, CHUNK_SIZE, VIEW_CHUNKS, WATER_LEVEL } from './worldgen.js';
-import { Chunk } from './chunk.js';
+import { Chunk, tickWaterfalls } from './chunk.js';
 import { Player } from './player.js';
 import { Input } from './controls.js';
 import { BuildSystem, BLOCK_TYPES } from './build.js';
@@ -107,6 +107,7 @@ waterGeo.rotateX(-Math.PI / 2);
 const waterMat = new THREE.MeshLambertMaterial({
   color: '#6fb3c4', transparent: true, opacity: 0.82,
 });
+if (params.has('redwater')) { waterMat.color.set('#ff0000'); waterMat.opacity = 1; waterMat.transparent = false; }
 const water = new THREE.Mesh(waterGeo, waterMat);
 water.position.y = WATER_LEVEL - 0.12;
 scene.add(water);
@@ -248,6 +249,53 @@ function runDebug() {
     renderer.shadowMap.enabled = arg === 'on';
     scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
     document.title = 'shadows ' + arg;
+  }
+  if (verb === 'wd') {
+    try {
+    let out = `vis=${water.visible} pos=${water.position.toArray().map(v => v.toFixed(1))} op=${waterMat.opacity} red=${waterMat.color.r} tr=${waterMat.transparent}\n`;
+    out += `cam pos=${camera.position.toArray().map(v => v.toFixed(1))} near=${camera.near} far=${camera.far}\n`;
+    const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    out += `sphere intersects=${fr.intersectsSphere(new THREE.Sphere(water.position.clone(), 300))}\n`;
+    water.updateMatrixWorld();
+    out += `water world pos=${water.getWorldPosition(new THREE.Vector3()).toArray().map(v => v.toFixed(1))} geo=${water.geometry.boundingBox === null ? 'nullbb' : 'bb'}\n`;
+    document.title = out;
+    } catch (e) { document.title = 'WDERR ' + e.message; }
+  }
+  if (verb === 'wf') {
+    // teleport to the nearest river-bank waterfall spot for testing
+    let best = null, bestD = 1e9;
+    for (let r = -100; r <= 100; r += 2) {
+      for (let q = -100; q <= 100; q += 2) {
+        const x = Math.round(player.pos.x) + r, z = Math.round(player.pos.z) + q;
+        const h = world.heightMesh(x, z);
+        if (h < WATER_LEVEL + 1.8) continue;
+        if (world.riverMask(x, z) > 0.5) continue;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (world.riverMask(x + dx, z + dz) >= 0.9) {
+            const d = Math.hypot(r, q);
+            // stand southeast of the fall so the NW-facing camera sees it
+            if (d < bestD) { bestD = d; best = { x: x + dx * 0.9, z: z + dz * 0.9 }; }
+          }
+        }
+      }
+    }
+    if (best) {
+      player.pos.x = best.x; player.pos.z = best.z;
+      player.pos.y = world.heightMesh(best.x, best.z) + 0.31;
+      camTarget.copy(player.pos);
+      // ascii map of water/banks around the fall (9x9, camera looks toward -x,-z)
+      let map = '';
+      for (let mz = -4; mz <= 4; mz++) {
+        for (let mx = -4; mx <= 4; mx++) {
+          const wx = Math.round(best.x) + mx, wz = Math.round(best.z) + mz;
+          const rm = world.riverMask(wx, wz);
+          const hh = world.heightMesh(wx, wz);
+          map += rm >= 0.9 ? '~' : rm > 0.5 ? '-' : hh >= WATER_LEVEL + 1.8 ? '#' : hh >= WATER_LEVEL + 0.4 ? '+' : '.';
+        }
+        map += ' ';
+      }
+      document.title = `wf ${best.x},${best.z} d=${Math.round(bestD)} | ` + map;
+    } else document.title = 'no waterfall found';
   }
   if (verb === 'time') {
     timeOfDay = parseFloat(arg);
@@ -406,6 +454,7 @@ function frame(now) {
   ensureChunks(player.pos.x, player.pos.z);
   updateDay(dt);
   updateWind(now / 1000);
+  tickWaterfalls(dt);
 
   // camera follows (fixed pov — never rotates or zooms)
   camTarget.lerp(player.pos, 1 - Math.pow(0.001, dt));
