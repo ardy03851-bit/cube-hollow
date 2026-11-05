@@ -17,13 +17,19 @@ export const BLOCK_TYPES = [
   { id: 'lantern', name: 'Lantern', top: '#ffd98a', side: '#e8b45c', emissive: 0xffc35c, glow: true },
   { id: 'path',    name: 'Path',    top: '#b5a98f', side: '#a3987f', thin: true },
   { id: 'flower',  name: 'Flowers', top: '#e2603f', side: '#5d7a3d' },
+  { id: 'painting', name: 'Painting', top: '#8a6844', side: '#8a6844', painting: true },
 ];
+
+export const PAINTING_SRCS = ['hills', 'apples', 'cottage-night', 'flowers'];
+const texLoader = new THREE.TextureLoader();
 
 const geoCache = {};
 function geometryFor(type) {
   if (geoCache[type.id]) return geoCache[type.id];
   let g;
-  if (type.wedge) {
+  if (type.painting) {
+    g = new THREE.PlaneGeometry(0.92, 0.92);
+  } else if (type.wedge) {
     g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute([
       0, 0, 0,  1, 0, 0,  1, 0, 1,  0, 0, 1,   // bottom
@@ -63,7 +69,21 @@ export class BuildSystem {
     this._mats = new Map();
   }
 
-  materialFor(type) {
+  materialFor(type, variant = 0) {
+    if (type.painting) {
+      const mk = type.id + ':' + variant;
+      if (this._mats.has(mk)) return this._mats.get(mk);
+      const tex = texLoader.load(`art/paintings/${PAINTING_SRCS[variant % PAINTING_SRCS.length]}.png`);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const mat = new THREE.MeshLambertMaterial({
+        map: tex,
+        side: THREE.DoubleSide,
+        transparent: true,
+        alphaTest: 0.15,
+      });
+      this._mats.set(mk, mat);
+      return mat;
+    }
     if (this._mats.has(type.id)) return this._mats.get(type.id);
     const mat = new THREE.MeshLambertMaterial({
       color: new THREE.Color(type.side),
@@ -97,13 +117,21 @@ export class BuildSystem {
     if (this.blocks.has(k)) return false;
     if (y < -2) return false;
     const type = BLOCK_TYPES[this.selected];
-    const mesh = new THREE.Mesh(geometryFor(type), this.materialFor(type));
-    mesh.position.set(cx, y + 0.5, cz);
-    mesh.castShadow = true;
+    const variant = Math.floor(Math.random() * PAINTING_SRCS.length);
+    const mesh = new THREE.Mesh(geometryFor(type), this.materialFor(type, variant));
+    if (type.painting) {
+      // hang it like wall art: a little higher, facing back toward the player
+      mesh.rotation.y = Math.atan2(player.facing.x, player.facing.y) + Math.PI;
+      mesh.position.set(cx, y + 1.05, cz);
+      mesh.castShadow = false;
+    } else {
+      mesh.position.set(cx, y + 0.5, cz);
+      mesh.castShadow = true;
+    }
     mesh.receiveShadow = true;
     mesh.userData.blockType = type.id;
     this.scene.add(mesh);
-    this.blocks.set(k, { type, mesh });
+    this.blocks.set(k, { type, mesh, variant });
     this.save();
     return true;
   }
@@ -142,7 +170,11 @@ export class BuildSystem {
     clearTimeout(this._t);
     this._t = setTimeout(() => {
       const data = {};
-      for (let [k, b] of this.blocks) data[k] = b.type.id;
+      for (let [k, b] of this.blocks) {
+        let id = b.type.id;
+        if (b.type.painting) id += `:${b.variant}:${b.mesh.rotation.y.toFixed(3)}`;
+        data[k] = id;
+      }
       try { localStorage.setItem('cube-hollow-world', JSON.stringify(data)); } catch (e) {}
     }, 400);
   }
@@ -153,14 +185,24 @@ export class BuildSystem {
       if (!raw) return;
       const data = JSON.parse(raw);
       for (let [k, id] of Object.entries(data)) {
-        const type = BLOCK_TYPES.find(t => t.id === id);
+        const parts = String(id).split(':');
+        const type = BLOCK_TYPES.find(t => t.id === parts[0]);
         if (!type) continue;
+        const variant = parts[1] !== undefined ? parseInt(parts[1]) : 0;
+        const yaw = parts[2] !== undefined ? parseFloat(parts[2]) : 0;
         const [x, y, z] = k.split(',').map(Number);
-        const mesh = new THREE.Mesh(geometryFor(type), this.materialFor(type));
-        mesh.position.set(x, y + 0.5, z);
-        mesh.castShadow = true; mesh.receiveShadow = true;
+        const mesh = new THREE.Mesh(geometryFor(type), this.materialFor(type, variant));
+        if (type.painting) {
+          mesh.rotation.y = yaw;
+          mesh.position.set(x, y + 1.05, z);
+          mesh.castShadow = false;
+        } else {
+          mesh.position.set(x, y + 0.5, z);
+          mesh.castShadow = true;
+        }
+        mesh.receiveShadow = true;
         this.scene.add(mesh);
-        this.blocks.set(k, { type, mesh });
+        this.blocks.set(k, { type, mesh, variant });
       }
     } catch (e) {}
   }
