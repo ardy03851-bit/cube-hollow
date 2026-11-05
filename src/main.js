@@ -179,7 +179,7 @@ BLOCK_TYPES.forEach((t, i) => {
   el.appendChild(img);
   const key = document.createElement('span');
   key.className = 'key';
-  key.textContent = (i + 1) % 10;
+  key.textContent = i < 10 ? (i + 1) % 10 : '';
   el.appendChild(key);
   el.addEventListener('pointerdown', (e) => { e.preventDefault(); selectSlot(i); });
   hotbar.appendChild(el);
@@ -191,7 +191,10 @@ function selectSlot(i) {
 selectSlot(0);
 addEventListener('keydown', (e) => {
   const n = parseInt(e.key);
-  if (!isNaN(n)) selectSlot((n + 9) % BLOCK_TYPES.length);
+  if (!isNaN(n) && e.key !== '') {
+    // keys 1-9 and 0 select slots 1-10 directly
+    if (n >= 1 || e.key === '0') selectSlot(n === 0 ? 9 : n - 1);
+  }
 });
 
 // ---------------- particles: drifting pollen ----------------
@@ -310,6 +313,10 @@ const fireflies = new THREE.Points(ffGeo, new THREE.PointsMaterial({
 }));
 scene.add(fireflies);
 
+// NOTE: with the fixed steep isometric camera the sky is never visible
+// (the view is filled by terrain), so night atmosphere comes from the dark
+// sky color, fog and fireflies instead of stars/moon.
+
 // ---------------- day cycle ----------------
 const DAY_LENGTH = 300; // seconds
 let timeOfDay = 0.35;   // start mid-morning
@@ -368,7 +375,7 @@ startBtn.addEventListener('click', () => {
   if (isTouch) touchUI.classList.remove('hidden');
   hint.textContent = isTouch
     ? 'drag the joystick to wander — place blocks with the buttons'
-    : 'WASD to wander — 1-9 pick a block, SPACE places, X removes';
+    : 'WASD to wander — 1-0 pick a block, SPACE places, X removes, Q/E cycles';
   setTimeout(() => hint.style.opacity = '0', 9000);
   hint.style.transition = 'opacity 1.5s';
 });
